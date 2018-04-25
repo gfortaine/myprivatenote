@@ -32,6 +32,10 @@ class Notes extends Component {
     // add to the collection of notes a previously downloaded note
     this.onImportNote = this.onImportNote.bind(this);
 
+    // share notes
+    this.onShareNote = this.onShareNote.bind(this);
+    this.onShareClose = this.onShareClose.bind(this);
+
     // delete a note
     this.onDeleteNote = this.onDeleteNote.bind(this);
 
@@ -65,6 +69,12 @@ class Notes extends Component {
                 <i className="fa fa-user" />{this.props.session.login}
               </span>
             </div>
+            <ShareNote
+              note={this.state.noteToShare}
+              session={this.props.session}
+              onClose={this.onShareClose}
+              downloadContent={this.downloadContent}
+            />
             <CreateNote
               onSave={this.onSaveNote}
               onImport={this.onImportNote}
@@ -75,8 +85,9 @@ class Notes extends Component {
                 note={note}
                 onExpand={() => this.onExpandNote(note)}
                 onCollapse={() => this.onCollapseNote(note)}
-                onDelete={() => this.onDeleteNote(note)}
                 onDownload={() => this.onDownloadNote(note)}
+                onDelete={() => this.onDeleteNote(note)}
+                onShare={() => this.onShareNote(note)}
               />
             )}
         </div>
@@ -100,6 +111,19 @@ class Notes extends Component {
     await this.state.store.import(note);
     await this.loadNotes();
     await this.onExpandNote(note);
+  }
+
+  // share note
+  async onShareNote(note) {
+    let encryptedContent =
+      await this.state.store.getNoteEncryptedContent(note.id);
+    note = { id: note.id, encryptedContent: encryptedContent };
+    this.setState({ noteToShare: note });
+  }
+
+  // tidy things up after sharing a note
+  async onShareClose() {
+    this.setState({ noteToShare: null });
   }
 
   // delete a note
@@ -183,6 +207,112 @@ class Notes extends Component {
     let ids = await this.state.store.getNotesIds();
     let notes = ids.map(id => ({id, content: null}));
     this.setState({notes});
+  }
+}
+
+// represents note share modal menu
+class ShareNote extends Component {
+
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      // login of the user with whom the note is shared
+      sharerLogin: '',
+
+      downloadUrl: null,
+    }
+
+    // called each time the value in the sharer login field changes
+    this.onLoginChange = this.onLoginChange.bind(this);
+
+    // called when the Share button is clicked
+    this.onShare = this.onShare.bind(this);
+    this.shareNote = this.shareNote.bind(this);
+  }
+
+  componentWillReceiveProps() {
+    this.setState({ downloadURL: null });
+  }
+
+  render() {
+    if (this.props.note == null) {
+      return null;
+    }
+    return(
+    <div className="modal is-active">
+      <div className="modal-background"></div>
+      <div className="modal-content">
+        <div className="box">
+          <h1>Share note {this.props.note.id}</h1>
+          <div className="field">
+            <div className="control has-icons-left">
+              <input
+                className="input"
+                type="text"
+                value={this.state.login}
+                placeholder="Account id"
+                onChange={this.onLoginChange}
+              />
+              <span className="icon is-small is-left">
+                <i className="fa fa-user"></i>
+              </span>
+            </div>
+          </div>
+          <div className="field is-grouped">
+            <div className="control">
+              {this.state.downloadURL == null ?
+                <button className="button" onClick={this.onShare}>
+                  Share the note
+                </button> :
+                <a className="button" href={this.state.downloadURL} download={this.props.note.id + fileNameExtension}>
+                  Download the encrypted note
+                </a>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+      <button className="modal-close is-large" aria-label="close" onClick={this.props.onClose} />
+    </div>
+    );
+  }
+
+  // called each time the value in the sharer login field changes
+  onLoginChange(e) {
+    this.setState({ sharerLogin: e.target.value });
+  }
+
+  // called when the share button is clicked
+  async onShare() {
+    if ('' === this.state.sharerLogin) {
+      return;
+    }
+    try {
+      await this.shareNote();
+    }
+    catch(e) {
+      console.log(e);
+    }
+  }
+
+  async shareNote() {
+    // add Bob to the resource's sharing group
+    console.log(this.props.note.id, this. state.sharerLogin);
+    await this.props.session.Resource.extendSharingGroup(
+      this.props.note.id, [this.state.sharerLogin]);
+
+    console.log("1");
+
+    let encryptedContent = this.props.note.encryptedContent;
+    let reader = new FileReader();
+
+    reader.onloadend = () => {
+      console.log(reader.result);
+      this.props.downloadContent(reader.result, this.props.note.id);
+    };
+
+    reader.readAsDataURL(new Blob([encryptedContent]));
   }
 }
 
@@ -314,7 +444,7 @@ class CreateNote extends Component {
 }
 
 // represents the user's note (saved or imported)
-const Note = ({note, onExpand, onCollapse, onDelete, onDownload}) => {
+const Note = ({note, onExpand, onCollapse, onDownload, onShare, onDelete}) => {
   return (
     <div className="tile is-child box">
       <article className="media">
@@ -328,6 +458,7 @@ const Note = ({note, onExpand, onCollapse, onDelete, onDownload}) => {
             <i className="fa fa-compress" onClick={onCollapse} />
           }
           <i className="fa fa-download" onClick={onDownload}/>
+          <i className="fa fa-share" onClick={onShare} />
           <i className="fa fa-trash" onClick={onDelete}/>
         </div>
       </article>
